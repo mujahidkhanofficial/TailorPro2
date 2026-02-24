@@ -1,0 +1,50 @@
+appId: com.tailorpro.app
+productName: Tailor Pro
+copyright: Copyright © 2026 Tailor Pro
+
+directories:
+  output: release
+  buildResources: assets
+
+files:
+  - dist/**/*
+  - dist-electron/**/*
+  - package.json
+
+extraMetadata:
+  main: dist-electron/main.js
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+        - ia32
+  icon: public/icon.ico
+  artifactName: ${productName}-Setup-${version}.${ext}
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  installerIcon: public/icon.ico
+  uninstallerIcon: public/icon.ico
+  installerHeaderIcon: public/icon.ico
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Tailor Pro
+
+mac:
+  icon: public/icon.icns
+  target:
+    - dmg
+    - zip
+
+linux:
+  icon: public/favicon.png
+  target:
+    - AppImage
+    - deb
+  category: Utility
+
+publish: null

@@ -1,0 +1,23 @@
+{
+    "compilerOptions": {
+        "target": "ES2020",
+        "module": "ESNext",
+        "moduleResolution": "Node",
+        "lib": [
+            "ES2020"
+        ],
+        "outDir": "dist-electron",
+        "rootDir": "electron",
+        "strict": true,
+        "esModuleInterop": true,
+        "skipLibCheck": true,
+        "forceConsistentCasingInFileNames": true,
+        "resolveJsonModule": true
+    },
+    "include": [
+        "electron/main.ts"
+    ],
+    "exclude": [
+        "electron/preload.ts"
+    ]
+}

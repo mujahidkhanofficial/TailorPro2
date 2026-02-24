@@ -1,0 +1,57 @@
+{
+  "name": "tailor-pro",
+  "version": "1.0.0",
+  "description": "Offline-first tailor management app for Pakistan",
+  "main": "dist-electron/main.js",
+  "type": "module",
+  "scripts": {
+    "dev": "tsc -p tsconfig.electron.json && tsc -p tsconfig.preload.json && concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
+    "build": "tsc && vite build && tsc -p tsconfig.electron.json && tsc -p tsconfig.preload.json",
+    "electron:dev": "tsc -p tsconfig.electron.json && tsc -p tsconfig.preload.json && concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
+    "preview": "vite preview",
+    "package": "npm run build && electron-builder",
+    "test": "vitest",
+    "test:e2e": "playwright test"
+  },
+  "keywords": [
+    "tailor",
+    "pakistan",
+    "offline",
+    "electron"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@react-pdf/renderer": "^4.3.2",
+    "dexie": "^4.0.8",
+    "electron-updater": "^6.7.3",
+    "framer-motion": "^12.27.1",
+    "i18next": "^23.16.4",
+    "lucide-react": "^0.562.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-hot-toast": "^2.6.0",
+    "react-i18next": "^15.1.1",
+    "react-router-dom": "^6.28.0",
+    "zustand": "^5.0.1"
+  },
+  "devDependencies": {
+    "@faker-js/faker": "^10.2.0",
+    "@playwright/test": "^1.49.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.3",
+    "autoprefixer": "^10.4.20",
+    "concurrently": "^9.1.0",
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8",
+    "png-to-ico": "^3.0.1",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.15",
+    "tailwindcss-animate": "^1.0.7",
+    "typescript": "^5.6.3",
+    "vite": "^6.0.1",
+    "vitest": "^2.1.6",
+    "wait-on": "^8.0.1"
+  }
+}
