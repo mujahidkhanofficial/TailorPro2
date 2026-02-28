@@ -65,6 +65,8 @@ export interface Settings {
     defaultPrinter?: string;
     appTitle?: string; // Custom app title in sidebar
     password?: string; // For admin login
+    slipLayout?: any[]; // Custom layout array for the template editor
+    slipPageSize?: 'A4' | 'A5'; // Paper size for the slip
     updatedAt: Date;
 }
 // ... (skip lines)

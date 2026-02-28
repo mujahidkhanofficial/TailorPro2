@@ -1,10 +1,10 @@
 import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+import { exec } from 'child_process';
+// In CommonJS, __dirname is globally available
+// We don't need to define it manually
+// const __dirname = path.dirname(__filename);
 let mainWindow: BrowserWindow | null = null;
 
 function createWindow(): void {
@@ -91,50 +91,41 @@ ipcMain.handle('get-app-version', () => {
     return app.getVersion();
 });
 
-// Helper to generate PDF from HTML content (Shared logic)
-async function generatePDF(htmlContent: string): Promise<Buffer> {
-    const printWindow = new BrowserWindow({
-        show: false,
-        webPreferences: {
-            nodeIntegration: true,
-            contextIsolation: false
-        }
-    });
-
-    await printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`);
-
-    const pdfData = await printWindow.webContents.printToPDF({
-        printBackground: true,
-        landscape: false,
-        pageSize: 'A5',
-        margins: { top: 0, bottom: 0, left: 0, right: 0 }
-    });
-
-    printWindow.close();
-    return pdfData;
-}
-
-// 1. SAVE PDF Handler (Directly Generates A5 PDF)
-ipcMain.handle('save-pdf', async (_event, htmlContent: string) => {
+// 1. SAVE PDF Handler (Directly Generates A5 PDF from current window)
+ipcMain.handle('save-pdf', async () => {
     try {
-        const pdfData = await generatePDF(htmlContent);
+        const win = BrowserWindow.getFocusedWindow();
+        if (!win || win.isDestroyed()) {
+            throw new Error('PDF unavailable: window invalid');
+        }
 
-        const { filePath } = await dialog.showSaveDialog({
-            title: 'Save Measurement Slip (A5)',
+        const { canceled, filePath } = await dialog.showSaveDialog(win, {
+            title: 'Save PDF',
             defaultPath: `Measurement-Slip-${Date.now()}.pdf`,
-            filters: [{ name: 'PDF Files', extensions: ['pdf'] }]
+            filters: [{ name: 'PDF Files', extensions: ['pdf'] }],
+            properties: ['showOverwriteConfirmation', 'createDirectory']
         });
 
-        if (filePath) {
-            await fs.promises.writeFile(filePath, pdfData);
-            // Open the file after saving
-            import('child_process').then(cp => {
-                const cmd = process.platform === 'win32' ? 'start' : (process.platform === 'darwin' ? 'open' : 'xdg-open');
-                cp.exec(`${cmd} "" "${filePath}"`);
-            });
-            return { success: true, path: filePath };
+        if (canceled || !filePath) {
+            return { success: false, canceled: true };
         }
-        return { success: false, error: 'Cancelled' };
+
+        // Generate PDF buffer from the active window
+        const pdfData = await win.webContents.printToPDF({
+            printBackground: true,
+            landscape: false,
+            pageSize: 'A5',
+            margins: { top: 0, bottom: 0, left: 0, right: 0 }
+        });
+
+        // Save buffer to actual NTFS file path selected by user
+        await fs.promises.writeFile(filePath, pdfData);
+
+        // Open the file after saving (Native behavior)
+        const cmd = process.platform === 'win32' ? 'start' : (process.platform === 'darwin' ? 'open' : 'xdg-open');
+        exec(`${cmd} "" "${filePath}"`);
+        
+        return { success: true, path: filePath };
     } catch (error: any) {
         console.error('Save PDF Error:', error);
         return { success: false, error: error.message };
@@ -146,6 +137,14 @@ ipcMain.handle('save-pdf', async (_event, htmlContent: string) => {
 ipcMain.handle('print-to-pdf', async (_event, htmlContent: string) => {
     let previewWindow: BrowserWindow | null = null;
     try {
+        const preloadPath = path.join(__dirname, 'preload-preview.js');
+        console.log('Using preload script at:', preloadPath); // Debug log
+
+        if (!fs.existsSync(preloadPath)) {
+            console.error('Preload script not found at:', preloadPath);
+            return { success: false, error: 'Internal Error: Preload script missing' };
+        }
+
         previewWindow = new BrowserWindow({
             width: 600,
             height: 900,
@@ -155,9 +154,14 @@ ipcMain.handle('print-to-pdf', async (_event, htmlContent: string) => {
             webPreferences: {
                 nodeIntegration: false,
                 contextIsolation: true,
-                preload: path.join(__dirname, 'preload-preview.js')
+                preload: preloadPath,
+                sandbox: false, // Important for some preload features
+                webSecurity: false // Allow loading local resources
             }
         });
+
+        // Debugging: Open DevTools for the preview window to see why preload fails
+        previewWindow.webContents.openDevTools({ mode: 'detach' });
 
         // Inject Control UI into the HTML
         const uiScript = `
@@ -211,22 +215,17 @@ ipcMain.handle('print-to-pdf', async (_event, htmlContent: string) => {
                 </button>
             </div>
             <script>
-                function saveAsPDF() {
-                    alert('saveAsPDF called!'); // DEBUG
+                async function saveAsPDF() {
                     try {
-                        const html = document.documentElement.outerHTML;
-                        // Remove the control buttons from the HTML before saving
-                        // Note: We split '</scr' + 'ipt>' to avoid breaking the HTML parser
-                        const cleanHtml = html.replace(/<div id="print-controls">[\s\S]*?<\/div>/, '')
-                                              .replace(/<style>[\s\S]*?#print-controls[\s\S]*?<\/style>/, '')
-                                              .replace(new RegExp('<scr' + 'ipt>[\\s\\S]*?<\\/scr' + 'ipt>', 'g'), '');
-                        
                         if (window.previewAPI && window.previewAPI.savePDF) {
-                            window.previewAPI.savePDF(cleanHtml);
+                            const result = await window.previewAPI.savePDF();
+                            if (!result.success && !result.canceled) {
+                                alert('Save Error: ' + (result.error || 'Unknown error'));
+                            }
                         } else {
                             alert('Save API not available. Please restart the app.');
                         }
-                    } catch (err) {
+                    } catch (err: any) {
                         alert('Save Error: ' + err.message);
                     }
                 }

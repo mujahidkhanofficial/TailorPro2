@@ -138,6 +138,10 @@ export default function OrderDetail() {
         // Open in new window
         const win = window.open('', '_blank');
         if (win) {
+            win.document.open();
+            win.document.write(html);
+            win.document.close();
+            win.focus();
             win.document.write(html);
             win.document.close();
             win.focus();

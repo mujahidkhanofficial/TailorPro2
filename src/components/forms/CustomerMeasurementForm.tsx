@@ -1,12 +1,12 @@
-import { useState, useEffect, useCallback, useMemo, memo } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { db, CustomerMeasurement } from '@/db/database';
-import { measurementFields, designOptions, collarNokOptions, banPattiOptions, cuffOptions, frontPocketOptions, sidePocketOptions, frontStripOptions, hemStyleOptions, shalwarFarmaishOptions } from '@/db/templates';
 import { Save, Printer, RotateCcw, CheckCircle, AlertCircle, Eye } from 'lucide-react';
 import { useAutosave } from '@/hooks/useAutosave';
 import ConfirmationModal from '@/components/ui/ConfirmationModal';
 import toast from 'react-hot-toast';
 import { parseMeasurementInput, formatMeasurementDisplay } from '@/utils/fractionUtils';
+import { ALL_MEASUREMENT_FIELD_KEYS, LayoutElement, DEFAULT_LAYOUT, DAMAN_OPTIONS, SILAI_OPTIONS, BAN_OPTIONS } from '@/utils/slipLayout';
 
 interface CustomerMeasurementFormProps {
     customerId: number;
@@ -15,38 +15,9 @@ interface CustomerMeasurementFormProps {
     onPreview?: (measurement: CustomerMeasurement) => void;
 }
 
-// Optimized Input Component to prevent re-renders
-const MeasurementInput = memo(({
-    label,
-    value,
-    fieldKey,
-
-    onChange
-}: {
-    label: string,
-    value: string,
-    fieldKey: string,
-    onChange: (key: string, value: string) => void
-}) => (
-    <div>
-        <label className="block text-sm font-medium text-gray-600 mb-1">
-            {label}
-        </label>
-        <input
-            type="text"
-            value={formatMeasurementDisplay(value || '')}
-            onChange={(e) => onChange(fieldKey, e.target.value)}
-            className="input text-center text-lg font-semibold w-full h-14 py-1"
-            placeholder="—"
-            dir="ltr"
-        />
-    </div>
-));
-
-MeasurementInput.displayName = 'MeasurementInput';
-
 export default function CustomerMeasurementForm({
     customerId,
+    customerName,
     onPrint,
     onPreview
 }: CustomerMeasurementFormProps) {
@@ -58,42 +29,71 @@ export default function CustomerMeasurementForm({
     const [existingId, setExistingId] = useState<number | null>(null);
     const [loading, setLoading] = useState(true);
     const [showResetConfirm, setShowResetConfirm] = useState(false);
+    const [customerPhone, setCustomerPhone] = useState<string>('');
 
-    // Memoize filtered fields
-    const kameesFields = useMemo(() => measurementFields.filter(f => ['length', 'sleeve', 'bazu_center', 'chest', 'tera', 'kalar', 'daaman'].includes(f.key)), []);
-    const shalwarFields = useMemo(() => measurementFields.filter(f => ['shalwar', 'aasan', 'pancha'].includes(f.key)), []);
+    // Dynamic Layout State
+    const [layout, setLayout] = useState<LayoutElement[]>(DEFAULT_LAYOUT);
+    const [shopSettings, setShopSettings] = useState<any>(null);
 
     // Stable change handler
     const handleFieldChange = useCallback((key: string, value: string) => {
         setFields((prev) => ({ ...prev, [key]: parseMeasurementInput(value) }));
     }, []);
 
-    // Load existing measurements on mount
+    // Load existing measurements & layout on mount
     useEffect(() => {
-        loadMeasurements();
+        loadMeasurementsAndLayout();
     }, [customerId]);
 
-    async function loadMeasurements() {
+    async function loadMeasurementsAndLayout() {
         setLoading(true);
         try {
+            // Load Settings for layout
+            const settings = await db.settings.toCollection().first();
+            if (settings) {
+                setShopSettings(settings);
+                const savedLayout = settings.slipLayout && settings.slipLayout.length > 0 ? settings.slipLayout : DEFAULT_LAYOUT;
+                const mergedLayout = DEFAULT_LAYOUT.map(defaultEl => {
+                    if (defaultEl.isFixed) return defaultEl;
+                    const savedEl = savedLayout.find((el: any) => el.id === defaultEl.id);
+                    return savedEl || defaultEl;
+                });
+                setLayout(mergedLayout);
+            } else {
+                setLayout(DEFAULT_LAYOUT);
+            }
+
+            // Load Customer Phone
+            const customer = await db.customers.get(customerId);
+            if (customer) {
+                setCustomerPhone(customer.phone);
+            }
+
+            // Load Measurements
             const existing = await db.customerMeasurements
                 .where('customerId')
                 .equals(customerId)
                 .first();
 
             if (existing) {
-                setFields(existing.fields || {});
+                const loaded = existing.fields || {};
+                // if older entries didn't include sNo, use the record ID
+                if (!loaded.sNo && existing.id) {
+                    loaded.sNo = existing.id.toString();
+                }
+                setFields(loaded);
                 setOptions(existing.designOptions || {});
                 setExistingId(existing.id || null);
             } else {
-                // Initialize empty fields
                 const emptyFields: Record<string, string> = {};
-                measurementFields.forEach((f) => (emptyFields[f.key] = ''));
+                ALL_MEASUREMENT_FIELD_KEYS.forEach((fieldKey) => {
+                    emptyFields[fieldKey] = '';
+                });
+                // auto‑generate S.No from the database's auto‑increment ID sequence
+                const last = await db.customerMeasurements.orderBy('id').last();
+                const nextId = last && last.id ? last.id + 1 : 1;
+                emptyFields['sNo'] = nextId.toString();
                 setFields(emptyFields);
-
-                const emptyOptions: Record<string, boolean> = {};
-                designOptions.forEach((o) => (emptyOptions[o.key] = false));
-                setOptions(emptyOptions);
             }
         } catch (error) {
             console.error('Error loading measurements:', error);
@@ -136,12 +136,12 @@ export default function CustomerMeasurementForm({
 
     function confirmReset() {
         const emptyFields: Record<string, string> = {};
-        measurementFields.forEach((f) => (emptyFields[f.key] = ''));
+        ALL_MEASUREMENT_FIELD_KEYS.forEach((fieldKey) => {
+            emptyFields[fieldKey] = '';
+        });
         setFields(emptyFields);
 
-        const emptyOptions: Record<string, boolean> = {};
-        designOptions.forEach((o) => (emptyOptions[o.key] = false));
-        setOptions(emptyOptions);
+        setOptions({});
         setShowResetConfirm(false);
         toast.success(isUrdu ? 'ناپ صاف کر دیے گئے' : 'Measurements cleared successfully');
     }
@@ -161,9 +161,7 @@ export default function CustomerMeasurementForm({
     }
 
     function handlePreview() {
-        console.log('Preview button clicked');
         if (onPreview) {
-            console.log('Calling onPreview prop');
             const measurement: CustomerMeasurement = {
                 id: existingId || undefined,
                 customerId,
@@ -189,10 +187,9 @@ export default function CustomerMeasurementForm({
 
     return (
         <div className="space-y-6">
-            {/* Header */}
             <div className="flex justify-between items-center">
                 <h3 className="text-lg font-bold text-gray-800 flex items-center gap-3">
-                    {isUrdu ? 'ناپ' : 'Measurements'}
+                    {isUrdu ? 'ناپ پرچی' : 'Measurement Slip'}
                     {saveStatus === 'saving' && (
                         <span className="text-xs font-normal text-gray-500 flex items-center gap-1 animate-pulse bg-gray-100 px-2 py-1 rounded-full">
                             <Save className="w-3 h-3" /> {isUrdu ? 'محفوظ ہو رہا ہے...' : 'Saving...'}
@@ -238,255 +235,226 @@ export default function CustomerMeasurementForm({
                 </div>
             </div>
 
-            {/* Kamees Section */}
-            <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 shadow-sm">
-                <h4 className="text-md font-bold text-gray-700 mb-4 border-b pb-2 flex items-center gap-2">
-                    <span className="w-1 h-6 bg-primary-500 rounded-full"></span>
-                    {isUrdu ? 'قمیض / سوٹ' : 'Kamees / Shirt'}
-                </h4>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                    {kameesFields.map((field) => (
-                        <MeasurementInput
-                            key={field.key}
-                            label={isUrdu ? field.labelUr : field.labelEn}
-                            value={fields[field.key]}
-                            fieldKey={field.key}
-                            onChange={handleFieldChange}
-                        />
-                    ))}
+            {/* Simulated physical measurement slip layout */}
+            <div className="flex justify-center w-full overflow-x-auto pb-4">
+                <div
+                    className="bg-white relative shadow-inner transition-all duration-300"
+                    style={{
+                        width: '500px',
+                        height: shopSettings?.slipPageSize === 'A4' ? '707px' : '700px', // Adjust height based on page size
+                        border: '1px solid #cbd5e1',
+                        fontFamily: 'sans-serif',
+                        color: '#0f172a'
+                    }}
+                    dir="ltr"
+                >
+                    {layout.map((element) => {
+                        const style: React.CSSProperties = {
+                            position: 'absolute',
+                            top: `${element.y}%`,
+                            left: `${element.x}%`,
+                            width: element.width ? `${element.width}%` : 'auto',
+                            height: element.height ? `${element.height}%` : 'auto',
+                        };
 
-                    <MeasurementInput
-                        label={isUrdu ? 'گول بازو' : 'Gol Bazu'}
-                        value={fields['golBazu']}
-                        fieldKey="golBazu"
-                        onChange={handleFieldChange}
-                    />
+                        if (element.type === 'textBlock') {
+                            let contentStr = element.content;
+                            if (element.id === 'header_title' && shopSettings?.shopName) {
+                                contentStr = shopSettings.shopName;
+                            }
+                            if (element.id === 'header_subtitle' && shopSettings?.phone1) {
+                                contentStr = `Contact No: ${shopSettings.phone1}`;
+                            }
 
-                    {/* Collar Nok Dropdown */}
-                    <div>
-                        <label className="block text-sm font-medium text-gray-600 mb-1">
-                            {isUrdu ? 'کالر نوک' : 'Collar Nok'}
-                        </label>
-                        <select
-                            value={fields['collarNok'] || ''}
-                            onChange={(e) => setFields((prev) => ({ ...prev, collarNok: e.target.value }))}
-                            className="input w-full text-center text-lg font-semibold h-14 py-1"
-                            dir={isUrdu ? 'rtl' : 'ltr'}
-                        >
-                            {collarNokOptions.map((opt) => (
-                                <option key={opt.value} value={opt.value}>
-                                    {isUrdu ? opt.labelUr : opt.labelEn}
-                                </option>
-                            ))}
-                        </select>
-                    </div>
+                            if (element.id === 'header_divider') {
+                                return <div key={element.id} style={{ ...style, backgroundColor: element.color || '#cbd5e1' }} />;
+                            }
 
-                    {/* Ban Patti Dropdown */}
-                    <div>
-                        <label className="block text-sm font-medium text-gray-600 mb-1">
-                            {isUrdu ? 'بین پٹی' : 'Ban Patti'}
-                        </label>
-                        <select
-                            value={fields['banPatti'] || ''}
-                            onChange={(e) => setFields((prev) => ({ ...prev, banPatti: e.target.value }))}
-                            className="input w-full text-center text-lg font-semibold h-14 py-1"
-                            dir={isUrdu ? 'rtl' : 'ltr'}
-                        >
-                            {banPattiOptions.map((opt) => (
-                                <option key={opt.value} value={opt.value}>
-                                    {isUrdu ? opt.labelUr : opt.labelEn}
-                                </option>
-                            ))}
-                        </select>
-                    </div>
+                            const fontFamily = element.direction === 'rtl' ? "'NotoNastaliqUrdu', serif" : 'Arial, sans-serif';
+                            return (
+                                <div key={element.id} style={{ ...style, direction: element.direction || 'ltr', fontFamily }} className="flex items-center justify-center text-center font-bold">
+                                    <div style={{ fontSize: `${element.fontSize || 14}px`, color: element.color || '#0f172a' }}>
+                                        {contentStr.split('\n').map((line: string, i: number) => (
+                                            <div key={i}>{line}</div>
+                                        ))}
+                                    </div>
+                                </div>
+                            );
+                        }
 
-                    <MeasurementInput
-                        label={isUrdu ? 'پٹی سائز' : 'Patti Size'}
-                        value={fields['pattiSize']}
-                        fieldKey="pattiSize"
-                        onChange={handleFieldChange}
-                    />
+                        if (element.type === 'input') {
+                            return (
+                                <div key={element.id} style={style} className="flex items-center">
+                                    {!element.content.hideLabel && (
+                                        <span className="font-semibold text-slate-600 px-1.5 text-[13px] shrink-0 whitespace-nowrap bg-white" style={{ fontFamily: 'Arial, sans-serif' }}>
+                                            {element.content.label}
+                                        </span>
+                                    )}
+                                    <input
+                                        type="text"
+                                        value={
+                                            element.content.field === 'customerName' ? customerName || '' :
+                                            element.content.field === 'phone' ? customerPhone || '' :
+                                            formatMeasurementDisplay(fields[element.content.field] || '')
+                                        }
+                                        onChange={(e) => handleFieldChange(element.content.field, e.target.value)}
+                                        readOnly={element.content.field === 'sNo' || element.content.field === 'customerName' || element.content.field === 'phone'}
+                                        className={`flex-1 min-w-0 w-full outline-none text-slate-900 font-bold px-1.5 text-sm bg-transparent z-10 ${element.content.hideLabel ? 'text-center text-base' : ''
+                                            } ${element.content.field === 'sNo' || element.content.field === 'customerName' || element.content.field === 'phone' ? 'cursor-not-allowed opacity-80' : ''}`}
+                                        style={{ fontFamily: 'Arial, sans-serif' }}
+                                        dir="ltr"
+                                    />
+                                    {element.content.dottedLine ? (
+                                        <div className="absolute left-6 right-1 bottom-1 border-b border-dashed border-slate-300 z-0 pointer-events-none" />
+                                    ) : (
+                                        <div className="absolute left-0 right-0 bottom-0 border-b border-slate-300 z-0 pointer-events-none" />
+                                    )}
+                                </div>
+                            );
+                        }
 
-                    {/* Cuff Dropdown */}
-                    <div>
-                        <label className="block text-sm font-medium text-gray-600 mb-1">
-                            {isUrdu ? 'کف' : 'Cuff'}
-                        </label>
-                        <select
-                            value={fields['cuff'] || ''}
-                            onChange={(e) => setFields((prev) => ({ ...prev, cuff: e.target.value }))}
-                            className="input w-full text-center text-lg font-semibold h-14 py-1"
-                            dir={isUrdu ? 'rtl' : 'ltr'}
-                        >
-                            {cuffOptions.map((opt) => (
-                                <option key={opt.value} value={opt.value}>
-                                    {isUrdu ? opt.labelUr : opt.labelEn}
-                                </option>
-                            ))}
-                        </select>
-                    </div>
+                        if (element.type === 'svg') {
+                            const svgBase64 = element.content.raw
+                                ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(element.content.raw.replace(/\\n/g, ''))}`
+                                : `/SVG/${element.content.asset}`;
 
-                    <MeasurementInput
-                        label={isUrdu ? 'کف سائز' : 'Cuff Size'}
-                        value={fields['cuffSize']}
-                        fieldKey="cuffSize"
-                        onChange={handleFieldChange}
-                    />
+                            return (
+                                <div key={element.id} style={style} className="relative pointer-events-none">
+                                    <img
+                                        src={svgBase64}
+                                        alt={element.id}
+                                        className="w-full h-full object-contain pointer-events-none"
+                                        style={{ filter: "brightness(0) saturate(100%) invert(32%) sepia(13%) saturate(831%) hue-rotate(176deg) brightness(95%) contrast(88%)" }}
+                                        draggable={false}
+                                    />
+                                    {/* Nested Inputs inside the SVG */}
+                                    {(element.content.inputs || []).map((inp: any) => {
+                                        const valStr = formatMeasurementDisplay((fields[inp.id] || '').toString());
+                                        const chWidth = Math.max(2.5, valStr.length + 0.5); // At least 2.5ch width
+                                        let left = `${inp.relX}%`;
+                                        if (inp.placeX === 'left') left = '0%';
+                                        if (inp.placeX === 'right') left = '100%';
+                                        if (inp.placeX === 'center') left = '50%';
 
-                    {/* Front Pocket Dropdown */}
-                    <div>
-                        <label className="block text-sm font-medium text-gray-600 mb-1">
-                            {isUrdu ? 'سامنے جیب' : 'Front Pocket'}
-                        </label>
-                        <select
-                            value={fields['frontPocket'] || ''}
-                            onChange={(e) => setFields((prev) => ({ ...prev, frontPocket: e.target.value }))}
-                            className="input w-full text-center text-lg font-semibold h-14 py-1"
-                            dir={isUrdu ? 'rtl' : 'ltr'}
-                        >
-                            {frontPocketOptions.map((opt) => (
-                                <option key={opt.value} value={opt.value}>
-                                    {isUrdu ? opt.labelUr : opt.labelEn}
-                                </option>
-                            ))}
-                        </select>
-                    </div>
+                                        let top = `${inp.relY}%`;
+                                        if (inp.placeY === 'top') top = '0%';
+                                        if (inp.placeY === 'bottom') top = '100%';
+                                        if (inp.placeY === 'center') top = '50%';
 
-                    {/* Side Pocket Dropdown */}
-                    <div>
-                        <label className="block text-sm font-medium text-gray-600 mb-1">
-                            {isUrdu ? 'سائیڈ جیب' : 'Side Pocket'}
-                        </label>
-                        <select
-                            value={fields['sidePocket'] || ''}
-                            onChange={(e) => setFields((prev) => ({ ...prev, sidePocket: e.target.value }))}
-                            className="input w-full text-center text-lg font-semibold h-14 py-1"
-                            dir={isUrdu ? 'rtl' : 'ltr'}
-                        >
-                            {sidePocketOptions.map((opt) => (
-                                <option key={opt.value} value={opt.value}>
-                                    {isUrdu ? opt.labelUr : opt.labelEn}
-                                </option>
-                            ))}
-                        </select>
-                    </div>
+                                        let transform = `translate(-50%, -50%)`;
+                                        if (inp.placeX === 'left') transform = transform.replace('-50%', '0%');
+                                        if (inp.placeX === 'right') transform = transform.replace('-50%', '-100%');
+                                        if (inp.placeY === 'top') transform = transform.replace(/, -50%\)/, ', 0%)');
+                                        if (inp.placeY === 'bottom') transform = transform.replace(/, -50%\)/, ', -100%)');
 
-                    {/* Front Strip Dropdown */}
-                    <div>
-                        <label className="block text-sm font-medium text-gray-600 mb-1">
-                            {isUrdu ? 'سامنے کی پٹی' : 'Front Strip'}
-                        </label>
-                        <select
-                            value={fields['frontStrip'] || ''}
-                            onChange={(e) => setFields((prev) => ({ ...prev, frontStrip: e.target.value }))}
-                            className="input w-full text-center text-lg font-semibold h-14 py-1"
-                            dir={isUrdu ? 'rtl' : 'ltr'}
-                        >
-                            {frontStripOptions.map((opt) => (
-                                <option key={opt.value} value={opt.value}>
-                                    {isUrdu ? opt.labelUr : opt.labelEn}
-                                </option>
-                            ))}
-                        </select>
-                    </div>
+                                        return (
+                                            <input
+                                                key={inp.id}
+                                                type="text"
+                                                value={valStr}
+                                                onChange={(e) => handleFieldChange(inp.id, e.target.value)}
+                                                className={`absolute outline-none text-slate-900 font-bold rounded-sm z-10 text-center pointer-events-auto transition-all focus:bg-white focus:ring-1 focus:ring-slate-400 ${!valStr ? 'bg-slate-200/60' : 'bg-transparent hover:bg-slate-100/50'
+                                                    }`}
+                                                style={{
+                                                    left,
+                                                    top,
+                                                    width: `${chWidth}ch`,
+                                                    transform,
+                                                    fontFamily: 'Arial, sans-serif'
+                                                }}
+                                                dir="ltr"
+                                            />
+                                        );
+                                    })}
+                                </div>
+                            );
+                        }
 
+                        if (element.type === 'damanGroup') {
+                            const options = element.content?.options || DAMAN_OPTIONS;
+                            return (
+                                <div key={element.id} style={style} className="flex items-end justify-center gap-4 font-urdu">
+                                    {options.map((opt: any) => (
+                                        <label key={opt.key} className="flex flex-col items-center cursor-pointer">
+                                            <img
+                                                src={`/SVG/${opt.asset}`}
+                                                alt={opt.labelUr || opt.label}
+                                                className="w-10 h-8 object-contain"
+                                                style={{ filter: 'brightness(0) saturate(100%) invert(32%) sepia(13%) saturate(831%) hue-rotate(176deg) brightness(95%) contrast(88%)' }}
+                                                draggable={false}
+                                            />
+                                            <span className="text-[11px] font-semibold mt-1 text-slate-600 whitespace-nowrap font-urdu">
+                                                {opt.labelUr || opt.label || ''}
+                                            </span>
+                                            <input
+                                                type="radio"
+                                                name="daman_option"
+                                                checked={fields['daman_selected'] === opt.key}
+                                                onChange={() => handleFieldChange('daman_selected', opt.key)}
+                                                className="w-4 h-4 accent-slate-800 cursor-pointer mt-1"
+                                            />
+                                        </label>
+                                    ))}
+                                </div>
+                            );
+                        }
 
-                    {/* Hem Style Dropdown */}
-                    <div>
-                        <label className="block text-sm font-medium text-gray-600 mb-1">
-                            {isUrdu ? 'دامن فرمائش' : 'Daman Farmaish'}
-                        </label>
+                        if (element.type === 'silaiGroup') {
+                            const options = element.content?.options || SILAI_OPTIONS;
+                            return (
+                                <div key={element.id} style={style} className="flex flex-col justify-center text-xs font-semibold text-slate-600 font-urdu px-2">
+                                    <select
+                                        value={fields['silai_selected'] || ''}
+                                        onChange={(e) => handleFieldChange('silai_selected', e.target.value)}
+                                        className="w-full p-1 border rounded text-right font-urdu bg-white focus:outline-none focus:ring-1 focus:ring-slate-400"
+                                        style={{ fontFamily: "'NotoNastaliqUrdu', serif" }}
+                                        dir="rtl"
+                                    >
+                                        <option value="" disabled>منتخب کریں</option>
+                                        {options.map((opt: any) => (
+                                            <option key={opt.key} value={opt.key}>
+                                                {opt.labelUr || opt.label || ''}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                            );
+                        }
 
-                        <select
-                            value={fields['hemStyle'] || ''}
-                            onChange={(e) => setFields((prev) => ({ ...prev, hemStyle: e.target.value }))}
-                            className="input w-full text-center text-lg font-semibold h-14 py-1"
-                            dir={isUrdu ? 'rtl' : 'ltr'}
-                        >
-                            {hemStyleOptions.map((opt) => (
-                                <option key={opt.value} value={opt.value}>
-                                    {isUrdu ? opt.labelUr : opt.labelEn}
-                                </option>
-                            ))}
-                        </select>
-                    </div>
+                        if (element.type === 'banGroup') {
+                            const options = element.content?.options || BAN_OPTIONS;
+                            return (
+                                <div key={element.id} style={style} className="flex flex-col justify-center text-xs font-semibold text-slate-600 font-urdu px-2">
+                                    <select
+                                        value={fields['ban_selected'] || ''}
+                                        onChange={(e) => handleFieldChange('ban_selected', e.target.value)}
+                                        className="w-full p-1 border rounded text-right font-urdu bg-white focus:outline-none focus:ring-1 focus:ring-slate-400"
+                                        style={{ fontFamily: "'NotoNastaliqUrdu', serif" }}
+                                        dir="rtl"
+                                    >
+                                        <option value="" disabled>بین کا انتخاب</option>
+                                        {options.map((opt: any) => (
+                                            <option key={opt.key} value={opt.key}>
+                                                {opt.labelUr || opt.label || ''}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                            );
+                        }
+
+                        return null;
+                    })}
+
                 </div>
             </div>
-
-            {/* Shalwar Section */}
-            <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 shadow-sm">
-                <h4 className="text-md font-bold text-gray-700 mb-4 border-b pb-2 flex items-center gap-2">
-                    <span className="w-1 h-6 bg-secondary-500 rounded-full"></span>
-                    {isUrdu ? 'شلوار / پاجامہ' : 'Shalwar / Trouser'}
-                </h4>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                    {shalwarFields.map((field) => (
-                        <MeasurementInput
-                            key={field.key}
-                            label={isUrdu ? field.labelUr : field.labelEn}
-                            value={fields[field.key]}
-                            fieldKey={field.key}
-                            onChange={handleFieldChange}
-                        />
-                    ))}
-
-                    {/* Shalwar Farmaish Dropdown */}
-                    <div>
-                        <label className="block text-sm font-medium text-gray-600 mb-1">
-                            {isUrdu ? 'شلوار فرمائش' : 'Shalwar Farmaish'}
-                        </label>
-                        <select
-                            value={fields['shalwarFarmaish'] || ''}
-                            onChange={(e) => setFields((prev) => ({ ...prev, shalwarFarmaish: e.target.value }))}
-                            className="input w-full text-center text-lg font-semibold h-14 py-1"
-                            dir={isUrdu ? 'rtl' : 'ltr'}
-                        >
-                            {shalwarFarmaishOptions.map((opt) => (
-                                <option key={opt.value} value={opt.value}>
-                                    {isUrdu ? opt.labelUr : opt.labelEn}
-                                </option>
-                            ))}
-                        </select>
-                    </div>
-
-                    <MeasurementInput
-                        label={isUrdu ? 'شلوار چوڑائی' : 'Shalwar Width'}
-                        value={fields['shalwarWidth']}
-                        fieldKey="shalwarWidth"
-                        onChange={handleFieldChange}
-                    />
+            
+            {/* Footer Note */}
+            <div className="flex justify-center w-full pb-4">
+                <div className="w-[500px] text-center text-slate-600 text-sm border-t border-dashed border-slate-300 pt-3" style={{ fontFamily: "'NotoNastaliqUrdu', serif" }} dir="rtl">
+                    رسید گم ہو جانے پر اگر عدد میں کسی قسم کی بھی غلطی ہوئی تو اس کا ذمہ دار کاریگر ہوگا۔
                 </div>
             </div>
-
-            {/* Design Options (Checkboxes) */}
-            <div>
-                <h4 className="text-sm font-medium text-gray-600 mb-3">
-                    {isUrdu ? 'فرمائش آپشنز' : 'Design Options'}
-                </h4>
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                    {designOptions.map((option) => (
-                        <label
-                            key={option.key}
-                            className={`flex items-center gap-2 p-3 rounded-lg border cursor-pointer transition-all ${options[option.key]
-                                ? 'border-primary-500 bg-primary-50'
-                                : 'border-gray-200 hover:border-gray-300'
-                                }`}
-                        >
-                            <input
-                                type="checkbox"
-                                checked={options[option.key] || false}
-                                onChange={(e) =>
-                                    setOptions((prev) => ({ ...prev, [option.key]: e.target.checked }))
-                                }
-                                className="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-                            />
-                            <span className="text-sm font-medium">
-                                {isUrdu ? option.labelUr : option.labelEn}
-                            </span>
-                        </label>
-                    ))}
-                </div>
-            </div >
 
             <ConfirmationModal
                 isOpen={showResetConfirm}

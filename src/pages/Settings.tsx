@@ -6,11 +6,14 @@ import { db, Settings as ShopSettings } from '@/db/database';
 import toast from 'react-hot-toast';
 import ConfirmationModal from '@/components/ui/ConfirmationModal';
 import PageTransition from '@/components/ui/PageTransition';
+import TemplateDesigner from '@/components/settings/TemplateDesigner';
 
 export default function Settings() {
     const { t, i18n } = useTranslation();
     const { language, setLanguage } = useUIStore();
     const isUrdu = i18n.language === 'ur';
+
+    const [isDesignerOpen, setIsDesignerOpen] = useState(false);
 
     const [appVersion, setAppVersion] = useState<string>('');
     const [availablePrinters, setAvailablePrinters] = useState<any[]>([]);
@@ -250,6 +253,27 @@ export default function Settings() {
                 </div>
             </div>
 
+            {/* Layout Configuration */}
+            <div className="card">
+                <div className="flex justify-between items-center mb-4">
+                    <h2 className="text-lg font-semibold flex items-center gap-2">
+                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" />
+                        </svg>
+                        {isUrdu ? 'لے آؤٹ ڈیزائنر' : 'Slip Layout Designer'}
+                    </h2>
+                    <button
+                        onClick={() => setIsDesignerOpen(true)}
+                        className="btn btn-secondary flex items-center gap-2 text-sm py-1.5"
+                    >
+                        {isUrdu ? 'ڈیزائن تبدیل کریں' : 'Edit Design'}
+                    </button>
+                </div>
+                <p className="text-sm text-gray-500">
+                    {isUrdu ? 'پرچی پر شکلیں، خانے اور عنوانات کو اپنی مرضی سے سیٹ کریں۔' : 'Visually drag and drop the measurement slip elements, shapes, and inputs.'}
+                </p>
+            </div>
+
             {/* Printer Settings */}
             <div className="card">
                 <div className="flex justify-between items-center mb-4">
@@ -389,6 +413,11 @@ export default function Settings() {
                 message={isUrdu ? 'براہ کرم ایپ کا نام تبدیل کرنے کے لیے اپنا پاس ورڈ درج کریں۔' : 'Please enter your password to change the App Title.'}
                 confirmText={isUrdu ? 'ٹیبلیڈ کریں' : 'Update Title'}
                 requirePassword={true}
+            />
+
+            <TemplateDesigner
+                isOpen={isDesignerOpen}
+                onClose={() => setIsDesignerOpen(false)}
             />
 
         </PageTransition>

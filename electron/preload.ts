@@ -19,6 +19,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     printSilent: (htmlContent: string, printerName: string) =>
         ipcRenderer.invoke('print-silent', htmlContent, printerName),
 
-    savePDF: (htmlContent: string) =>
-        ipcRenderer.invoke('save-pdf', htmlContent),
+    savePDF: () =>
+        ipcRenderer.invoke('save-pdf'),
 });

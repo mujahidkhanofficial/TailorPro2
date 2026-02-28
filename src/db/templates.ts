@@ -3,17 +3,17 @@
 // Standardized measurement fields (matching reference slip)
 // The structure is based on the 11-row vertical table format commonly used in Pakistan.
 export const measurementFields = [
-    { key: 'length', labelEn: '1. Length (Lambai)', labelUr: '1. لمبائی (41½)', category: 'shirt' },
-    { key: 'tera', labelEn: '2. Tera (Shoulder)', labelUr: '2. تیرا (20)', category: 'shirt' },
-    { key: 'sleeve', labelEn: '3. Sleeves (Bazoo)', labelUr: '3. بازو (24½)', category: 'shirt' },
-    { key: 'kalar', labelEn: '4. Collar (Gala)', labelUr: '4. کالر / گلا (17½)', category: 'shirt' },
-    { key: 'armhole', labelEn: '5. Armhole (Modha)', labelUr: '5. مونڈا (13)', category: 'shirt' },
-    { key: 'chest', labelEn: '6. Chest (Chati)', labelUr: '6. چھاتی (27)', category: 'shirt' },
-    { key: 'waist', labelEn: '7. Waist (Kamar)', labelUr: '7. کمر (39½)', category: 'shirt' },
+    { key: 'length', labelEn: '1. Length (Lambai)', labelUr: '1. لمبائی', category: 'shirt' },
+    { key: 'tera', labelEn: '2. Tera (Shoulder)', labelUr: '2. تیرا', category: 'shirt' },
+    { key: 'sleeve', labelEn: '3. Sleeves (Bazoo)', labelUr: '3. بازو', category: 'shirt' },
+    { key: 'kalar', labelEn: '4. Collar (Gala)', labelUr: '4. کالر / گلا', category: 'shirt' },
+    { key: 'armhole', labelEn: '5. Armhole (Modha)', labelUr: '5. مونڈا', category: 'shirt' },
+    { key: 'chest', labelEn: '6. Chest (Chati)', labelUr: '6. چھاتی', category: 'shirt' },
+    { key: 'waist', labelEn: '7. Waist (Kamar)', labelUr: '7. کمر', category: 'shirt' },
     { key: 'hip', labelEn: '8. Hip (Hips)', labelUr: '8. ہپ', category: 'shirt' },
     { key: 'daaman', labelEn: '9. Daman (Ghera)', labelUr: '9. دامن / گھیرا', category: 'shirt' },
-    { key: 'shalwar', labelEn: '10. Shalwar Length', labelUr: '10. شلوار لمبائی (39½)', category: 'shalwar' },
-    { key: 'pancha', labelEn: '11. Pancha (Bottom)', labelUr: '11. پائنچہ (8½)', category: 'shalwar' },
+    { key: 'shalwar', labelEn: '10. Shalwar Length', labelUr: '10. شلوار لمبائی', category: 'shalwar' },
+    { key: 'pancha', labelEn: '11. Pancha (Bottom)', labelUr: '11. پائنچہ', category: 'shalwar' },
 ];
 
 // Collar Nok dropdown options (1.5" to 3")

@@ -106,8 +106,12 @@ export default function CustomerDetail() {
             // Open in new window (Matching OrderDetail)
             const win = window.open('', '_blank');
             if (win) {
+                win.document.open();
                 win.document.write(html);
                 win.document.close();
+                win.focus();
+            } else {
+                console.warn('Popup blocked or failed to open');
             }
         } catch (error: any) {
             console.error('Preview Error:', error);
